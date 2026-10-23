@@ -17,7 +17,7 @@ resource "docker_network" "dmz" {
 # --- Réseau "Backend" : isolé, jamais exposé directement ---
 resource "docker_network" "backend" {
   name = "lab-backend-network"
-  internal = true # aucune sortie internet ni accès direct depuis l'hôte
+  internal = true # pas de sortie internet depuis ce réseau (vérifié : résolution DNS externe impossible)
 }
 
 # --- Image nginx (réutilisée pour le reverse-proxy et le backend) ---

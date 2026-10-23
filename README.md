@@ -1,11 +1,8 @@
-# Local Architecture Lab — Segmentation réseau avec Docker + Terraform
+# Local Architecture Lab : segmentation réseau avec Docker et Terraform
 
-Architecture locale démontrant une segmentation réseau (DMZ / backend isolé), déployée
-entièrement via Terraform, sans dépendance à un fournisseur cloud. Réalisée en parallèle
-du lab AWS/OCI (`iso27001-lead-implementer-lab`), pendant la validation du compte cloud.
+Architecture locale qui sépare un reverse-proxy (réseau DMZ) d'un backend (réseau interne), déployée avec Terraform, sans fournisseur cloud. Réalisée pendant l'attente de validation d'un compte cloud. Un lab AWS/OCI est prévu ensuite.
 
-Voir [`docs/controls-implementation.md`](docs/controls-implementation.md) pour le détail
-de la mise en œuvre des contrôles ISO/IEC 27001 Annexe A appliqués ici.
+Les contrôles ISO/IEC 27001 Annexe A mis en œuvre et les résultats mesurés sont dans [`docs/controls-implementation.md`](docs/controls-implementation.md).
 
 ## Prérequis
 
@@ -31,22 +28,40 @@ Tapez `yes` pour confirmer.
 curl localhost:8080
 ```
 
-Vous devez voir le HTML de la page (`✅ Backend atteint avec succès`).
+La page HTML du backend s'affiche, relayée par le reverse-proxy.
 
-**Vérification de l'isolation** — essayez d'atteindre le backend directement (doit échouer) :
+## Vérifier le cloisonnement
+
+Trois vérifications, avec les résultats observés sur cette architecture.
+
+Ports publiés :
+
 ```bash
-docker exec lab-reverse-proxy curl -s lab-backend-app:80 | head -5
+docker ps --format "table {{.Names}}\t{{.Ports}}"
 ```
-Cette commande fonctionne (le proxy peut atteindre le backend, c'est voulu). Mais depuis
-l'hôte, il n'existe **aucun port** vers `lab-backend-app` — seul le proxy est joignable.
+
+Résultat observé : le proxy affiche `0.0.0.0:8080->80/tcp`, le backend affiche `80/tcp`. Sans flèche `->`, le port est exposé par l'image mais pas publié sur l'hôte.
+
+Sortie vers internet depuis le backend :
+
+```bash
+docker exec lab-backend-app wget -T 3 -O /dev/null http://example.com
+```
+
+Résultat observé : `wget: bad address 'example.com'`. Le backend ne résout aucun nom externe.
+
+Accès direct de l'hôte à l'adresse du backend :
+
+```bash
+curl -sS -m 3 -o /dev/null -w "%{http_code}\n" http://$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' lab-backend-app)
+```
+
+Résultat observé : `200`. L'hôte atteint le backend par son adresse sur le réseau Docker. `internal = true` ne bloque donc pas l'hôte lui-même.
 
 ## Voir la page dans un navigateur (optionnel)
 
-Si vous voulez voir la page dans votre navigateur Windows plutôt qu'en ligne de commande :
-
-1. Dans VirtualBox, ajoutez une deuxième règle de redirection de port (comme pour SSH) :
-   `Name: web`, `Host Port: 8080`, `Guest Port: 8080`
-2. Ouvrez `http://localhost:8080` dans votre navigateur Windows
+1. Dans VirtualBox, ajoutez une règle de redirection de port : `Name: web`, `Host Port: 8080`, `Guest Port: 8080`
+2. Ouvrez `http://localhost:8080` dans le navigateur Windows
 
 ## Nettoyer
 
@@ -59,15 +74,14 @@ terraform destroy
 ```
 local-architecture-lab/
 ├── terraform/
-│   ├── main.tf           # Réseaux + conteneurs (proxy + backend)
-│   └── proxy.conf         # Configuration nginx du reverse-proxy
+│   ├── main.tf           # Réseaux et conteneurs (proxy et backend)
+│   └── proxy.conf        # Configuration nginx du reverse-proxy
 ├── app/
-│   └── index.html         # Page servie par le backend
+│   └── index.html        # Page servie par le backend
 └── docs/
     └── controls-implementation.md
 ```
 
 ## Prochaine étape
 
-Ce lab sera étendu une fois le compte Oracle Cloud validé, pour comparer la même logique
-de segmentation appliquée à une infrastructure cloud réelle.
+Appliquer la même séparation à une infrastructure cloud, une fois un compte validé.
